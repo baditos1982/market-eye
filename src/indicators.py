@@ -3,6 +3,7 @@ Módulo para cálculo de indicadores técnicos
 """
 
 import pandas as pd
+import pandas_ta as ta
 import numpy as np
 import logging
 
@@ -30,12 +31,7 @@ class IndicatorCalculator:
             if df.empty or len(df) < period + 1:
                 return None
             
-            # Manual RSI calculation
-            delta = df['Close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-            rs = gain / loss
-            rsi = 100 - (100 / (1 + rs))
+            rsi = ta.rsi(df['Close'], length=period)
             return float(rsi.iloc[-1])
         except Exception as e:
             logger.error(f"Error calculando RSI: {e}")
@@ -56,7 +52,7 @@ class IndicatorCalculator:
             if df.empty or len(df) < period:
                 return None
             
-            sma = df['Close'].rolling(window=period).mean()
+            sma = ta.sma(df['Close'], length=period)
             return float(sma.iloc[-1])
         except Exception as e:
             logger.error(f"Error calculando SMA: {e}")
@@ -77,7 +73,7 @@ class IndicatorCalculator:
             if df.empty or len(df) < period:
                 return None
             
-            ema = df['Close'].ewm(span=period, adjust=False).mean()
+            ema = ta.ema(df['Close'], length=period)
             return float(ema.iloc[-1])
         except Exception as e:
             logger.error(f"Error calculando EMA: {e}")
@@ -100,17 +96,12 @@ class IndicatorCalculator:
             if df.empty or len(df) < slow + signal:
                 return None
             
-            # Manual MACD calculation
-            ema_fast = df['Close'].ewm(span=fast, adjust=False).mean()
-            ema_slow = df['Close'].ewm(span=slow, adjust=False).mean()
-            macd_line = ema_fast - ema_slow
-            signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-            histogram = macd_line - signal_line
+            macd_result = ta.macd(df['Close'], fast=fast, slow=slow, signal=signal)
             
             return {
-                'macd': float(macd_line.iloc[-1]),
-                'signal': float(signal_line.iloc[-1]),
-                'histogram': float(histogram.iloc[-1])
+                'macd': float(macd_result[f'MACD_{fast}_{slow}_{signal}'].iloc[-1]),
+                'signal': float(macd_result[f'MACDs_{fast}_{slow}_{signal}'].iloc[-1]),
+                'histogram': float(macd_result[f'MACDh_{fast}_{slow}_{signal}'].iloc[-1])
             }
         except Exception as e:
             logger.error(f"Error calculando MACD: {e}")
@@ -132,14 +123,12 @@ class IndicatorCalculator:
             if df.empty or len(df) < period:
                 return None
             
-            # Manual Bollinger Bands calculation
-            sma = df['Close'].rolling(window=period).mean()
-            std = df['Close'].rolling(window=period).std()
+            bbands = ta.bbands(df['Close'], length=period, std=std_dev)
             
             return {
-                'upper': float((sma + (std * std_dev)).iloc[-1]),
-                'middle': float(sma.iloc[-1]),
-                'lower': float((sma - (std * std_dev)).iloc[-1])
+                'upper': float(bbands[f'BBU_{period}_{std_dev}'].iloc[-1]),
+                'middle': float(bbands[f'BBM_{period}_{std_dev}'].iloc[-1]),
+                'lower': float(bbands[f'BBL_{period}_{std_dev}'].iloc[-1])
             }
         except Exception as e:
             logger.error(f"Error calculando Bandas de Bollinger: {e}")
