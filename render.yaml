@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: warren-indicator
+    env: python
+    region: frankfurt
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python src/main.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.7
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: CHECK_INTERVAL
+        value: 5
+    healthCheckPath: /health
+    disk:
+      name: data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
