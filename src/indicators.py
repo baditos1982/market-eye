@@ -3,7 +3,6 @@ Módulo para cálculo de indicadores técnicos
 """
 
 import pandas as pd
-import talib
 import numpy as np
 import logging
 
@@ -18,7 +17,7 @@ class IndicatorCalculator:
     
     def calculate_rsi(self, df: pd.DataFrame, period: int = 14) -> float:
         """
-        Calcular RSI (Relative Strength Index)
+        Calcular RSI (Relative Strength Index) manualmente
         
         Args:
             df: DataFrame con datos históricos (debe tener columna 'Close')
@@ -31,15 +30,28 @@ class IndicatorCalculator:
             if df.empty or len(df) < period + 1:
                 return None
             
-            rsi = talib.RSI(df['Close'].values, timeperiod=period)
-            return float(rsi[-1])
+            close_prices = df['Close'].values
+            deltas = np.diff(close_prices)
+            gains = np.where(deltas > 0, deltas, 0)
+            losses = np.where(deltas < 0, -deltas, 0)
+            
+            avg_gain = np.mean(gains[-period:])
+            avg_loss = np.mean(losses[-period:])
+            
+            if avg_loss == 0:
+                return 100.0
+            
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
+            
+            return float(rsi)
         except Exception as e:
             logger.error(f"Error calculando RSI: {e}")
             return None
     
     def calculate_sma(self, df: pd.DataFrame, period: int = 20) -> float:
         """
-        Calcular Simple Moving Average (SMA)
+        Calcular Simple Moving Average (SMA) manualmente
         
         Args:
             df: DataFrame con datos históricos
@@ -52,15 +64,15 @@ class IndicatorCalculator:
             if df.empty or len(df) < period:
                 return None
             
-            sma = talib.SMA(df['Close'].values, timeperiod=period)
-            return float(sma[-1])
+            sma = df['Close'].tail(period).mean()
+            return float(sma)
         except Exception as e:
             logger.error(f"Error calculando SMA: {e}")
             return None
     
     def calculate_ema(self, df: pd.DataFrame, period: int = 20) -> float:
         """
-        Calcular Exponential Moving Average (EMA)
+        Calcular Exponential Moving Average (EMA) manualmente
         
         Args:
             df: DataFrame con datos históricos
@@ -73,7 +85,14 @@ class IndicatorCalculator:
             if df.empty or len(df) < period:
                 return None
             
-            ema = talib.EMA(df['Close'].values, timeperiod=period)
+            close_prices = df['Close'].values
+            ema = np.zeros_like(close_prices)
+            ema[period-1] = np.mean(close_prices[:period])
+            
+            multiplier = 2 / (period + 1)
+            for i in range(period, len(close_prices)):
+                ema[i] = (close_prices[i] * multiplier) + (ema[i-1] * (1 - multiplier))
+            
             return float(ema[-1])
         except Exception as e:
             logger.error(f"Error calculando EMA: {e}")
@@ -81,7 +100,7 @@ class IndicatorCalculator:
     
     def calculate_macd(self, df: pd.DataFrame, fast: int = 12, slow: int = 26, signal: int = 9) -> dict:
         """
-        Calcular MACD
+        Calcular MACD manualmente
         
         Args:
             df: DataFrame con datos históricos
@@ -96,15 +115,23 @@ class IndicatorCalculator:
             if df.empty or len(df) < slow + signal:
                 return None
             
-            macd, signal_line, histogram = talib.MACD(
-                df['Close'].values, 
-                fastperiod=fast, 
-                slowperiod=slow, 
-                signalperiod=signal
-            )
+            close_prices = df['Close'].values
+            
+            # Calcular EMAs
+            ema_fast = self._calculate_ema_array(close_prices, fast)
+            ema_slow = self._calculate_ema_array(close_prices, slow)
+            
+            # MACD line
+            macd_line = ema_fast - ema_slow
+            
+            # Signal line (EMA of MACD)
+            signal_line = self._calculate_ema_array(macd_line, signal)
+            
+            # Histogram
+            histogram = macd_line - signal_line
             
             return {
-                'macd': float(macd[-1]),
+                'macd': float(macd_line[-1]),
                 'signal': float(signal_line[-1]),
                 'histogram': float(histogram[-1])
             }
@@ -112,9 +139,18 @@ class IndicatorCalculator:
             logger.error(f"Error calculando MACD: {e}")
             return None
     
+    def _calculate_ema_array(self, prices: np.ndarray, period: int) -> np.ndarray:
+        """Helper para calcular EMA array"""
+        ema = np.zeros_like(prices)
+        ema[period-1] = np.mean(prices[:period])
+        multiplier = 2 / (period + 1)
+        for i in range(period, len(prices)):
+            ema[i] = (prices[i] * multiplier) + (ema[i-1] * (1 - multiplier))
+        return ema
+    
     def calculate_bollinger_bands(self, df: pd.DataFrame, period: int = 20, std_dev: float = 2.0) -> dict:
         """
-        Calcular Bandas de Bollinger
+        Calcular Bandas de Bollinger manualmente
         
         Args:
             df: DataFrame con datos históricos
@@ -128,17 +164,17 @@ class IndicatorCalculator:
             if df.empty or len(df) < period:
                 return None
             
-            upper, middle, lower = talib.BBANDS(
-                df['Close'].values, 
-                timeperiod=period, 
-                nbdevup=std_dev, 
-                nbdevdn=std_dev
-            )
+            close_prices = df['Close'].tail(period)
+            middle_band = close_prices.mean()
+            std = close_prices.std()
+            
+            upper_band = middle_band + (std * std_dev)
+            lower_band = middle_band - (std * std_dev)
             
             return {
-                'upper': float(upper[-1]),
-                'middle': float(middle[-1]),
-                'lower': float(lower[-1])
+                'upper': float(upper_band),
+                'middle': float(middle_band),
+                'lower': float(lower_band)
             }
         except Exception as e:
             logger.error(f"Error calculando Bandas de Bollinger: {e}")
