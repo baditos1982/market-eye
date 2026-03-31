@@ -1,0 +1,17 @@
+{
+  "telegram": {
+    "bot_token": "",
+    "chat_id": ""
+  },
+  "scheduler": {
+    "check_interval_minutes": 5
+  },
+  "symbols": ["AAPL", "GOOGL", "TSLA", "MSFT"],
+  "database": {
+    "path": "data/warren_indicator.db"
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "logs/warren_indicator.log"
+  }
+}
