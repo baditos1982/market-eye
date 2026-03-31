@@ -3,7 +3,7 @@ Módulo para cálculo de indicadores técnicos
 """
 
 import pandas as pd
-import talib
+import pandas_ta as ta
 import numpy as np
 import logging
 
@@ -31,8 +31,8 @@ class IndicatorCalculator:
             if df.empty or len(df) < period + 1:
                 return None
             
-            rsi = talib.RSI(df['Close'].values, timeperiod=period)
-            return float(rsi[-1])
+            rsi = ta.rsi(df['Close'], length=period)
+            return float(rsi.iloc[-1])
         except Exception as e:
             logger.error(f"Error calculando RSI: {e}")
             return None
@@ -52,8 +52,8 @@ class IndicatorCalculator:
             if df.empty or len(df) < period:
                 return None
             
-            sma = talib.SMA(df['Close'].values, timeperiod=period)
-            return float(sma[-1])
+            sma = ta.sma(df['Close'], length=period)
+            return float(sma.iloc[-1])
         except Exception as e:
             logger.error(f"Error calculando SMA: {e}")
             return None
@@ -73,8 +73,8 @@ class IndicatorCalculator:
             if df.empty or len(df) < period:
                 return None
             
-            ema = talib.EMA(df['Close'].values, timeperiod=period)
-            return float(ema[-1])
+            ema = ta.ema(df['Close'], length=period)
+            return float(ema.iloc[-1])
         except Exception as e:
             logger.error(f"Error calculando EMA: {e}")
             return None
@@ -96,17 +96,12 @@ class IndicatorCalculator:
             if df.empty or len(df) < slow + signal:
                 return None
             
-            macd, signal_line, histogram = talib.MACD(
-                df['Close'].values, 
-                fastperiod=fast, 
-                slowperiod=slow, 
-                signalperiod=signal
-            )
+            macd_result = ta.macd(df['Close'], fast=fast, slow=slow, signal=signal)
             
             return {
-                'macd': float(macd[-1]),
-                'signal': float(signal_line[-1]),
-                'histogram': float(histogram[-1])
+                'macd': float(macd_result[f'MACD_{fast}_{slow}_{signal}'].iloc[-1]),
+                'signal': float(macd_result[f'MACDs_{fast}_{slow}_{signal}'].iloc[-1]),
+                'histogram': float(macd_result[f'MACDh_{fast}_{slow}_{signal}'].iloc[-1])
             }
         except Exception as e:
             logger.error(f"Error calculando MACD: {e}")
@@ -128,17 +123,12 @@ class IndicatorCalculator:
             if df.empty or len(df) < period:
                 return None
             
-            upper, middle, lower = talib.BBANDS(
-                df['Close'].values, 
-                timeperiod=period, 
-                nbdevup=std_dev, 
-                nbdevdn=std_dev
-            )
+            bbands = ta.bbands(df['Close'], length=period, std=std_dev)
             
             return {
-                'upper': float(upper[-1]),
-                'middle': float(middle[-1]),
-                'lower': float(lower[-1])
+                'upper': float(bbands[f'BBU_{period}_{std_dev}'].iloc[-1]),
+                'middle': float(bbands[f'BBM_{period}_{std_dev}'].iloc[-1]),
+                'lower': float(bbands[f'BBL_{period}_{std_dev}'].iloc[-1])
             }
         except Exception as e:
             logger.error(f"Error calculando Bandas de Bollinger: {e}")
