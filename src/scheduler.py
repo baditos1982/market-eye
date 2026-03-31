@@ -129,75 +129,86 @@ async def create_verification_task(data_fetcher, indicator_calc, alarm_engine,
     """
     
     async def verify_alarms():
-        """Función principal de verificación"""
+        """Función principal de verificación (optimizada)"""
         logger.info(f"Iniciando verificación de alarmas - {datetime.now()}")
         
-        for symbol in symbols:
-            try:
-                # 1. Obtener datos de mercado
-                market_data = data_fetcher.get_current_price(symbol)
-                if not market_data:
-                    logger.warning(f"No hay datos para {symbol}, saltando...")
-                    continue
-                
-                logger.info(f"{symbol}: ${market_data['price']:.2f} ({market_data['change_percent']:+.2f}%)")
-                
-                # 2. Obtener datos históricos para indicadores
-                historical_df = data_fetcher.get_historical_data(symbol, period="3mo", interval="1d")
-                
-                if historical_df.empty:
-                    logger.warning(f"No hay datos históricos para {symbol}")
-                    continue
-                
-                # 3. Calcular indicadores
-                indicators = indicator_calc.calculate_all_indicators(symbol, historical_df)
-                
-                # Log de indicadores principales
-                if indicators.get('rsi_14'):
-                    logger.debug(f"{symbol} RSI(14): {indicators['rsi_14']:.2f}")
-                if indicators.get('macd'):
-                    logger.debug(f"{symbol} MACD: {indicators['macd']:.4f}")
-                
-                # 4. Evaluar alarmas
-                triggered = alarm_engine.evaluate_all_alarms(symbol, market_data, indicators)
-                
-                # 5. Enviar notificaciones
-                for alarm in triggered:
-                    message = None
-                    
-                    if alarm.alarm_type == 'price':
-                        message = telegram_notifier.format_price_alert(
-                            symbol=symbol,
-                            condition=alarm.condition,
-                            current_value=market_data['price'],
-                            threshold=alarm.threshold
-                        )
-                    
-                    elif alarm.alarm_type == 'rsi':
-                        rsi_value = indicators.get('rsi_14', 0)
-                        condition_text = "Sobrecompra" if rsi_value > 70 else "Sobreventa"
-                        message = telegram_notifier.format_indicator_alert(
-                            symbol=symbol,
-                            indicator_name="RSI",
-                            indicator_value=rsi_value,
-                            condition=condition_text
-                        )
-                    
-                    elif alarm.alarm_type == 'volume':
-                        current_vol = market_data.get('volume', 0)
-                        avg_vol = indicators.get('volume_avg_20', 0)
-                        if avg_vol > 0:
-                            pct_increase = ((current_vol - avg_vol) / avg_vol) * 100
-                            message = telegram_notifier.format_volume_alert(
-                                symbol=symbol,
-                                current_volume=current_vol,
-                                avg_volume=int(avg_vol),
-                                percent_increase=pct_increase
-                            )
-                    
+        try:
+            # 1. Obtener todos los precios de una vez (optimizado)
+            all_market_data = data_fetcher.get_multiple_prices(symbols)
+            
+            if not all_market_data:
+                logger.warning("No se pudieron obtener datos de ningún símbolo")
+                return
+            
+            # 2. Obtener datos históricos en batch por símbolo
+            historical_cache = {}
+            for symbol in symbols:
+                if symbol in all_market_data:
+                    historical_df = data_fetcher.get_historical_data(symbol, period="3mo", interval="1d")
+                    if not historical_df.empty:
+                        historical_cache[symbol] = historical_df
+                        logger.info(f"{symbol}: ${all_market_data[symbol]['price']:.2f}")
                     else:
-                        # Mensaje genérico
-                        message = f"""
+                        logger.warning(f"No hay datos históricos para {symbol}")
+            
+            # 3. Procesar cada símbolo
+            for symbol in symbols:
+                if symbol not in all_market_data or symbol not in historical_cache:
+                    continue
+                
+                market_data = all_market_data[symbol]
+                historical_df = historical_cache[symbol]
+                
+                try:
+                    # Calcular indicadores
+                    indicators = indicator_calc.calculate_all_indicators(symbol, historical_df)
+                    
+                    # Log de indicadores principales
+                    if indicators.get('rsi_14'):
+                        logger.debug(f"{symbol} RSI(14): {indicators['rsi_14']:.2f}")
+                    if indicators.get('macd'):
+                        logger.debug(f"{symbol} MACD: {indicators['macd']:.4f}")
+                    
+                    # Evaluar alarmas
+                    triggered = alarm_engine.evaluate_all_alarms(symbol, market_data, indicators)
+                    
+                    # Enviar notificaciones
+                    for alarm in triggered:
+                        message = None
+                        
+                        if alarm.alarm_type == 'price':
+                            message = telegram_notifier.format_price_alert(
+                                symbol=symbol,
+                                condition=alarm.condition,
+                                current_value=market_data['price'],
+                                threshold=alarm.threshold
+                            )
+                        
+                        elif alarm.alarm_type == 'rsi':
+                            rsi_value = indicators.get('rsi_14', 0)
+                            condition_text = "Sobrecompra" if rsi_value > 70 else "Sobreventa"
+                            message = telegram_notifier.format_indicator_alert(
+                                symbol=symbol,
+                                indicator_name="RSI",
+                                indicator_value=rsi_value,
+                                condition=condition_text
+                            )
+                        
+                        elif alarm.alarm_type == 'volume':
+                            current_vol = market_data.get('volume', 0)
+                            avg_vol = indicators.get('volume_avg_20', 0)
+                            if avg_vol > 0:
+                                pct_increase = ((current_vol - avg_vol) / avg_vol) * 100
+                                message = telegram_notifier.format_volume_alert(
+                                    symbol=symbol,
+                                    current_volume=current_vol,
+                                    avg_volume=int(avg_vol),
+                                    percent_increase=pct_increase
+                                )
+                        
+                        else:
+                            # Mensaje genérico
+                            message = f"""
 🔔 <b>ALERTA ACTIVADA</b> 🔔
 
 <b>Símbolo:</b> {symbol}
@@ -206,15 +217,18 @@ async def create_verification_task(data_fetcher, indicator_calc, alarm_engine,
 
 <i>Hora: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</i>
 """
+                        
+                        if message:
+                            telegram_notifier.send_alert_sync(message)
                     
-                    if message:
-                        telegram_notifier.send_alert_sync(message)
+                    if triggered:
+                        logger.info(f"{len(triggered)} alarma(s) disparada(s) para {symbol}")
                 
-                if triggered:
-                    logger.info(f"{len(triggered)} alarma(s) disparada(s) para {symbol}")
-                
-            except Exception as e:
-                logger.error(f"Error verificando {symbol}: {e}", exc_info=True)
+                except Exception as e:
+                    logger.error(f"Error procesando {symbol}: {e}", exc_info=False)
+        
+        except Exception as e:
+            logger.error(f"Error en verificación: {e}", exc_info=True)
         
         logger.info(f"Verificación completada - {datetime.now()}")
     

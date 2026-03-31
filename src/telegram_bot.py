@@ -80,11 +80,19 @@ class TelegramNotifier:
             return False
         
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            result = loop.run_until_complete(self.send_message(message))
-            loop.close()
-            return result
+            # Reutilizar el loop existente si es posible
+            try:
+                loop = asyncio.get_running_loop()
+                # Si hay un loop corriendo, usar create_task (no bloqueante)
+                asyncio.create_task(self.send_message(message))
+                return True
+            except RuntimeError:
+                # No hay loop corriendo, crear uno temporal
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                result = loop.run_until_complete(self.send_message(message))
+                loop.close()
+                return result
         except Exception as e:
             logger.error(f"Error enviando alerta síncrona: {e}")
             return False
